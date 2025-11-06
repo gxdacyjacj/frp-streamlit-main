@@ -23,10 +23,10 @@ load_dotenv()
 # Excel文件路径
 EXCEL_FILE_PATH = './database 4.xlsx'
 
-# Railway数据库配置（已填入实际信息）
+# Railway数据库配置（使用Railway环境变量）
 RAILWAY_DB_CONFIG = {
-    'host': 'switchback.proxy.rlwy.net',
-    'port': 17121,
+    'host': 'switchback.proxy.rlwy.net',  # 使用外部可访问的主机名
+    'port': 17121,                        # 外部端口
     'user': 'root',
     'password': 'zAFTUZnwLefvYBrVaQSZNndcSmnZeuRe',
     'database': 'railway'

@@ -108,7 +108,7 @@ def _load_db_config_from_env_or_secrets():
     port = int(port) if port else 3306
     return host, port, user, pwd, dbname
 
-@st.cache_resource
+# @st.cache_resource  # Temporarily disabled to force fresh connection
 def get_db_engine():
     """
     用 SQLAlchemy 建 Engine（mysql+pymysql）
@@ -4029,7 +4029,8 @@ def load_default_data():
                 print(f"Found {count} records in research_data table")
                 
                 # 减少首屏读取量：只读取最新1000条记录，避免大查询
-                df = pd.read_sql("SELECT * FROM research_data ORDER BY id DESC LIMIT 1000", engine)
+                # Use feature_name instead of id since id column doesn't exist
+                df = pd.read_sql("SELECT * FROM research_data ORDER BY feature_name DESC LIMIT 1000", engine)
                 print(f"Successfully loaded {len(df)} rows from research_data table (limited for performance)")
             
             # Check for duplicates before cleaning
