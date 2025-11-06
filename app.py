@@ -83,10 +83,15 @@ def _load_db_config_from_env_or_secrets():
             return st.secrets.get(key, default)
         return os.getenv(key, default)
 
-    host_raw = _get("DB_HOST", "localhost")         # e.g. shortline.proxy.rlwy.net:12150
+    host_raw = _get("DB_HOST", "switchback.proxy.rlwy.net")  # Default to Railway host
     user     = _get("DB_USER", "root")
-    pwd      = _get("DB_PASSWORD", "")
+    pwd      = _get("DB_PASSWORD", "zAFTUZnwLefvYBrVaQSZNndcSmnZeuRe")  # Default Railway password
     dbname   = _get("DB_NAME", "railway")
+    
+    # Debug logging to check what values are being loaded
+    print(f"[DEBUG] DB Config - Host: {host_raw}, User: {user}, DB: {dbname}")
+    print(f"[DEBUG] .env file path: {env_path}")
+    print(f"[DEBUG] .env file exists: {os.path.exists(env_path)}")
     
     # Railway hostname conversion for external access
     # If using internal Railway hostname, convert to external for Streamlit Cloud
@@ -98,14 +103,14 @@ def _load_db_config_from_env_or_secrets():
         else:
             port = _get("DB_PORT")
     else:
-        port = _get("DB_PORT")
+        port = _get("DB_PORT", "17121")  # Default to Railway port
 
     host = host_raw
 
     if ":" in host_raw:     # 兼容 host:port 的形式
         host, port = host_raw.split(":", 1)
 
-    port = int(port) if port else 3306
+    port = int(port) if port else 17121  # Default to Railway port instead of 3306
     return host, port, user, pwd, dbname
 
 # @st.cache_resource  # Temporarily disabled to force fresh connection
@@ -117,11 +122,17 @@ def get_db_engine():
     from sqlalchemy.pool import QueuePool
 
     host, port, user, pwd, dbname = _load_db_config_from_env_or_secrets()
+    
+    # Debug logging to check the final connection parameters
+    print(f"[DEBUG] Final DB connection - Host: {host}, Port: {port}, User: {user}, DB: {dbname}")
+    
     # 处理空密码的情况
     if pwd:
         url = f"mysql+pymysql://{user}:{pwd}@{host}:{port}/{dbname}?charset=utf8mb4"
+        print(f"[DEBUG] Connection URL: mysql+pymysql://{user}:***@{host}:{port}/{dbname}?charset=utf8mb4")
     else:
         url = f"mysql+pymysql://{user}@{host}:{port}/{dbname}?charset=utf8mb4"
+        print(f"[DEBUG] Connection URL: mysql+pymysql://{user}@{host}:{port}/{dbname}?charset=utf8mb4")
     
 
     engine = create_engine(
