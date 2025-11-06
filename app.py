@@ -2339,7 +2339,7 @@ def initialize_admin(engine):
     admin_name = os.environ.get("ADMIN_NAME", "System Administrator")
     admin_institution = os.environ.get("ADMIN_INSTITUTION", "System")
 
-    with engine.connect() as conn:
+    with engine.begin() as conn:  # Use begin() for automatic transaction handling
         try:
             result = conn.execute(
                 text("SELECT email, name FROM users WHERE role = 'admin' AND status = 'approved'")
@@ -2357,10 +2357,11 @@ def initialize_admin(engine):
                         "institution": admin_institution
                     }
                 )
-                # SQLAlchemy自动提交INSERT语句
+                print(f"✅ Created admin user: {admin_email}")
                 return True, admin_email, "created"
             else:
                 existing_email = result._asdict()['email'] if hasattr(result, '_asdict') else result[0]
+                print(f"✅ Admin user already exists: {existing_email}")
                 return True, existing_email, "exists"
 
         except Exception as e:
@@ -2373,10 +2374,10 @@ def initialize_admin(engine):
                     """),
                     {"email": admin_email}
                 )
-                # SQLAlchemy自动提交UPDATE语句
+                print(f"✅ Upgraded user to admin: {admin_email}")
                 return True, admin_email, "upgraded"
             else:
-                print(f"Administrator initialization failed: {e}")
+                print(f"❌ Administrator initialization failed: {e}")
                 return False, None, "error"
 
 # ——————————————————————————————
@@ -4268,33 +4269,73 @@ with st.sidebar:
         
         if st.button("Login", type="primary", use_container_width=True):
             if engine:
-                user = authenticate_user(user_email, engine)
-                if user:
-                    st.session_state["authenticated_user"] = {
-                        "email": user['email'],
-                        "name": user['name'],
-                        "role": user['role']
-                    }
+                # Debug: Show connection status
+                try:
+                    with engine.connect() as test_conn:
+                        test_conn.execute(text("SELECT 1")).scalar()
                     
-                    # Set balloon flag for admin users
-                    if user['role'] == 'admin':
-                        st.session_state["show_admin_balloons"] = True
+                    # Debug: Check if users table exists and admin user exists
+                    with engine.connect() as conn:
+                        # Check if users table exists
+                        tables = conn.execute(text("SHOW TABLES LIKE 'users'")).fetchone()
+                        if not tables:
+                            st.error("❌ Users table not found. Please check database initialization.")
+                            st.stop()
+                        
+                        # Check admin user specifically
+                        admin_check = conn.execute(
+                            text("SELECT email, name, role, status FROM users WHERE email = :email"),
+                            {"email": user_email}
+                        ).fetchone()
+                        
+                        if admin_check:
+                            st.info(f"🔍 User found: {admin_check[1]} | Role: {admin_check[2]} | Status: {admin_check[3]}")
+                        else:
+                            st.warning(f"🔍 No user found with email: {user_email}")
+                            
+                            # Show available users for debugging (only first few)
+                            all_users = conn.execute(text("SELECT email, role, status FROM users LIMIT 5")).fetchall()
+                            if all_users:
+                                st.info("Available users in database:")
+                                for user_info in all_users:
+                                    st.write(f"  - {user_info[0]} ({user_info[1]}, {user_info[2]})")
+                            else:
+                                st.warning("No users found in database!")
                     
-                    st.success(f"Welcome, {user['name']}!")
-                    
-                    # Record login
-                    log_operation(
-                        user['email'],
-                        "login",
-                        None,
-                        None,
-                        {"ip": get_client_ip()},
-                        get_client_ip(),
-                        engine
-                    )
-                    st.rerun()
-                else:
-                    st.error("Authentication failed or access not approved")
+                    user = authenticate_user(user_email, engine)
+                    if user:
+                        st.session_state["authenticated_user"] = {
+                            "email": user['email'],
+                            "name": user['name'],
+                            "role": user['role']
+                        }
+                        
+                        # Set balloon flag for admin users
+                        if user['role'] == 'admin':
+                            st.session_state["show_admin_balloons"] = True
+                        
+                        st.success(f"Welcome, {user['name']}!")
+                        
+                        # Record login
+                        log_operation(
+                            user['email'],
+                            "login",
+                            None,
+                            None,
+                            {"ip": get_client_ip()},
+                            get_client_ip(),
+                            engine
+                        )
+                        st.rerun()
+                    else:
+                        st.error("Authentication failed or access not approved")
+                        
+                except Exception as db_error:
+                    st.error(f"❌ Database connection error: {str(db_error)}")
+                    host, port, user_db, pwd, dbname = _load_db_config_from_env_or_secrets()
+                    st.info(f"Trying to connect to: {user_db}@{host}:{port}/{dbname}")
+            else:
+                st.error("❌ Database engine not available")
         
         st.markdown("</div>", unsafe_allow_html=True)
     else:
