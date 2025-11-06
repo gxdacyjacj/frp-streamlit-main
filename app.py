@@ -69,6 +69,7 @@ def _load_db_config_from_env_or_secrets():
     """
     云端优先读 st.secrets， 本地用环境变量（.env）
     支持 DB_HOST 写成 'host:port'
+    自动处理Railway内部/外部主机名
     """
     # 确保.env文件被加载，指定正确路径并强制覆盖
     import os
@@ -87,10 +88,19 @@ def _load_db_config_from_env_or_secrets():
     pwd      = _get("DB_PASSWORD", "")
     dbname   = _get("DB_NAME", "railway")
     
-
+    # Railway hostname conversion for external access
+    # If using internal Railway hostname, convert to external for Streamlit Cloud
+    if host_raw == "mysql.railway.internal":
+        host_raw = "switchback.proxy.rlwy.net"
+        # Also ensure we have the correct external port
+        if not _get("DB_PORT"):
+            port = 17121  # Use external Railway port
+        else:
+            port = _get("DB_PORT")
+    else:
+        port = _get("DB_PORT")
 
     host = host_raw
-    port = _get("DB_PORT")  # 可选；多数情况下不用单独给
 
     if ":" in host_raw:     # 兼容 host:port 的形式
         host, port = host_raw.split(":", 1)
@@ -4121,9 +4131,26 @@ engine = get_db_engine()
 if engine:
     # 只在session state中没有初始化标记时才执行这些操作
     if "system_initialized" not in st.session_state:
-        create_tables(engine)
-        admin_success, admin_email, admin_status = initialize_admin(engine)
-        st.session_state.system_initialized = True
+        try:
+            # Test database connection first
+            with engine.connect() as test_conn:
+                test_conn.execute(text("SELECT 1")).scalar()
+            
+            # Connection successful, proceed with table creation
+            create_tables(engine)
+            admin_success, admin_email, admin_status = initialize_admin(engine)
+            st.session_state.system_initialized = True
+            
+        except Exception as e:
+            st.error(f"Database connection failed. Please check your database configuration.")
+            st.error(f"Error details: {str(e)}")
+            
+            # Show current configuration for debugging
+            host, port, user, pwd, dbname = _load_db_config_from_env_or_secrets()
+            st.info(f"Attempting to connect to: {user}@{host}:{port}/{dbname}")
+            
+            # Don't proceed without database connection
+            st.stop()
 
 # Initialize session state with improved data loading
 if "df_raw" not in st.session_state:
